@@ -5,3 +5,4 @@ export 'src/android_scanner_mode.dart';
 export 'src/exceptions.dart';
 export 'src/ios_image_format.dart';
 export 'src/ios_scanner_options.dart';
+export 'src/scanner_source.dart';

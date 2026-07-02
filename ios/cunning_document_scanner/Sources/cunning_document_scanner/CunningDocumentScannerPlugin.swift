@@ -35,7 +35,12 @@ public class CunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocumentCa
         let presentedVC = rootViewController
         resultChannel = result
 
-        if scannerOptions.isGalleryImportAllowed {
+        switch scannerOptions.scannerSource {
+        case .camera:
+            self.openCamera(from: presentedVC)
+        case .gallery:
+            self.openGallery(from: presentedVC)
+        case .cameraAndGallery:
             let labelCamera = getLocalizedOption("cunning_document_scanner_camera", defaultValue: "Camera")
             let labelGallery = getLocalizedOption("cunning_document_scanner_gallery", defaultValue: "Gallery")
             let labelCancel = getLocalizedOption("cunning_document_scanner_cancel", defaultValue: "Cancel")
@@ -69,8 +74,6 @@ public class CunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocumentCa
             }
             
             presentedVC?.present(alertController, animated: true)
-        } else {
-            self.openCamera(from: presentedVC)
         }
     }
 

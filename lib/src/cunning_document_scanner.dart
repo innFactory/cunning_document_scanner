@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'android_scanner_mode.dart';
 import 'exceptions.dart';
 import 'ios_scanner_options.dart';
+import 'scanner_source.dart';
 
 /// A class that provides a simple way to scan documents.
 class CunningDocumentScanner {
@@ -19,7 +20,8 @@ class CunningDocumentScanner {
   /// This method will open the camera and allow the user to scan documents.
   ///
   /// [noOfPages] is the maximum number of pages that can be scanned.
-  /// [isGalleryImportAllowed] is a flag that allows the user to import images from the gallery.
+  /// [isGalleryImportAllowed] is deprecated, use [scannerSource] instead.
+  /// [scannerSource] controls where images are sourced from (camera, gallery, or both).
   /// [androidScannerMode] controls the ML Kit scanner mode on Android only.
   /// [iosScannerOptions] is a set of options for the iOS scanner.
   /// [asPdf] is a flag that indicates if the scanned pages should be compiled and returned as a single PDF file path.
@@ -27,7 +29,9 @@ class CunningDocumentScanner {
   /// Returns a list of paths to the scanned images, or null if the user cancels the operation.
   static Future<List<String>?> getPictures({
     int noOfPages = 100,
+    @Deprecated('Use scannerSource instead')
     bool isGalleryImportAllowed = false,
+    ScannerSource? scannerSource,
     AndroidScannerMode? androidScannerMode = AndroidScannerMode.full,
     IosScannerOptions? iosScannerOptions,
     bool asPdf = false,
@@ -43,9 +47,19 @@ class CunningDocumentScanner {
       }
     }
 
+    final resolvedSource = scannerSource ??
+        (isGalleryImportAllowed
+            ? ScannerSource.cameraAndGallery
+            : ScannerSource.camera);
+
+    if (kDebugMode) {
+      print("CunningDocumentScanner: scannerSource=$scannerSource, resolvedSource=$resolvedSource, methodChannelValue=${resolvedSource.methodChannelValue}");
+    }
+
     final List<dynamic>? pictures = await _channel.invokeMethod('getPictures', {
       'noOfPages': noOfPages,
       'isGalleryImportAllowed': isGalleryImportAllowed,
+      'scannerSource': resolvedSource.methodChannelValue,
       'androidScannerMode': androidScannerMode?.methodChannelValue,
       'asPdf': asPdf,
       if (iosScannerOptions != null)

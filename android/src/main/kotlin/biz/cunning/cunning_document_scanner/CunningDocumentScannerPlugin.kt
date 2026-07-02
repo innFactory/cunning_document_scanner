@@ -2,6 +2,7 @@ package biz.cunning.cunning_document_scanner
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.IntentSender
 import androidx.core.app.ActivityCompat
@@ -37,6 +38,7 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
     private lateinit var activity: Activity
     private val START_DOCUMENT_ACTIVITY: Int = 0x362738
     private val START_DOCUMENT_FB_ACTIVITY: Int = 0x362737
+    private val START_GALLERY_PICKER: Int = 0x362736
 
 
     /// The MethodChannel that will the communication between Flutter and native Android
@@ -52,12 +54,21 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
 
     override fun onMethodCall(call: MethodCall, result: Result) {
         if (call.method == "getPictures") {
-            val noOfPages = call.argument<Int>("noOfPages") ?: 50;
-            val isGalleryImportAllowed = call.argument<Boolean>("isGalleryImportAllowed") ?: false;
+            val noOfPages = call.argument<Int>("noOfPages") ?: 50
+            val scannerSource = call.argument<String>("scannerSource") ?: if (call.argument<Boolean>("isGalleryImportAllowed") == true) "camera_and_gallery" else "camera"
+            android.util.Log.d("CunningScannerPlugin", "onMethodCall - scannerSource received: $scannerSource")
             val scannerMode = resolveScannerMode(call.argument<String>("androidScannerMode"))
             this.asPdf = call.argument<Boolean>("asPdf") ?: false
             this.pendingResult = result
-            startScan(noOfPages, isGalleryImportAllowed, scannerMode, asPdf)
+            
+            if (scannerSource == "gallery") {
+                android.util.Log.d("CunningScannerPlugin", "Calling startGalleryPicker()")
+                startGalleryPicker()
+            } else {
+                val isGalleryImportAllowed = (scannerSource == "camera_and_gallery")
+                android.util.Log.d("CunningScannerPlugin", "Calling startScan with isGalleryImportAllowed=$isGalleryImportAllowed")
+                startScan(noOfPages, isGalleryImportAllowed, scannerMode, asPdf)
+            }
         } else {
             result.notImplemented()
         }
@@ -74,19 +85,71 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
         addActivityResultListener(binding)
     }
 
+    private fun startGalleryPicker() {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        try {
+            ActivityCompat.startActivityForResult(activity, intent, START_GALLERY_PICKER, null)
+        } catch (e: ActivityNotFoundException) {
+            pendingResult?.error("ERROR", "Failed to start gallery picker", null)
+        }
+    }
+
     private fun addActivityResultListener(binding: ActivityPluginBinding) {
         this.binding = binding
         if (this.delegate == null) {
             this.delegate = PluginRegistry.ActivityResultListener { requestCode, resultCode, data ->
-                if (requestCode != START_DOCUMENT_ACTIVITY && requestCode != START_DOCUMENT_FB_ACTIVITY) {
+                android.util.Log.d("CunningScannerPlugin", "onActivityResult - requestCode: $requestCode, resultCode: $resultCode")
+                if (requestCode != START_DOCUMENT_ACTIVITY && requestCode != START_DOCUMENT_FB_ACTIVITY && requestCode != START_GALLERY_PICKER) {
                     return@ActivityResultListener false
                 }
                 var handled = false
-                if (requestCode == START_DOCUMENT_ACTIVITY) {
+                var shouldClearPendingResult = false
+                if (requestCode == START_GALLERY_PICKER) {
+                    android.util.Log.d("CunningScannerPlugin", "Handling START_GALLERY_PICKER")
+                    when (resultCode) {
+                        Activity.RESULT_OK -> {
+                            val selectedImageUri = data?.data
+                            android.util.Log.d("CunningScannerPlugin", "Selected Image Uri: $selectedImageUri")
+                            if (selectedImageUri != null) {
+                                // Launch fallback cropper activity granting URI permission
+                                val intent = Intent(activity, DocumentScannerActivity::class.java).apply {
+                                    this.data = selectedImageUri
+                                    this.clipData = ClipData.newRawUri("", selectedImageUri)
+                                    this.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    putExtra("EXTRA_IMAGE_URI_TO_CROP", selectedImageUri.toString())
+                                    putExtra(DocumentScannerExtra.EXTRA_MAX_NUM_DOCUMENTS, 1)
+                                }
+                                try {
+                                    android.util.Log.d("CunningScannerPlugin", "Starting DocumentScannerActivity...")
+                                    ActivityCompat.startActivityForResult(activity, intent, START_DOCUMENT_FB_ACTIVITY, null)
+                                } catch (e: ActivityNotFoundException) {
+                                    android.util.Log.e("CunningScannerPlugin", "Failed to start cropper: ${e.message}")
+                                    pendingResult?.error("ERROR", "Failed to start cropper activity: ${e.message}", null)
+                                    shouldClearPendingResult = true
+                                }
+                            } else {
+                                android.util.Log.e("CunningScannerPlugin", "No image selected (Uri is null)")
+                                pendingResult?.error("ERROR", "No image selected", null)
+                                shouldClearPendingResult = true
+                            }
+                        }
+                        Activity.RESULT_CANCELED -> {
+                            android.util.Log.d("CunningScannerPlugin", "Gallery picker cancelled")
+                            pendingResult?.success(emptyList<String>())
+                            shouldClearPendingResult = true
+                        }
+                    }
+                    handled = true
+                } else if (requestCode == START_DOCUMENT_ACTIVITY) {
+                    android.util.Log.d("CunningScannerPlugin", "Handling START_DOCUMENT_ACTIVITY (GMS)")
                     when (resultCode) {
                         Activity.RESULT_OK -> {
                             // check for errors
                             val error = data?.extras?.getString("error")
+                            android.util.Log.d("CunningScannerPlugin", "GMS error extra: $error")
                             if (error != null) {
                                 pendingResult?.error("ERROR", "error - $error", null)
                             } else {
@@ -97,6 +160,7 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
 
                                 if (asPdf) {
                                     val pdfUri = scanningResult.pdf?.uri?.toString()?.removePrefix("file://")
+                                    android.util.Log.d("CunningScannerPlugin", "GMS PDF URI: $pdfUri")
                                     if (pdfUri != null) {
                                         pendingResult?.success(listOf(pdfUri))
                                     } else {
@@ -106,6 +170,7 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
                                     val successResponse = scanningResult.pages?.map {
                                         it.imageUri.toString().removePrefix("file://")
                                     }?.toList()
+                                    android.util.Log.d("CunningScannerPlugin", "GMS success response: $successResponse")
                                     // trigger the success event handler with an array of cropped images
                                     pendingResult?.success(successResponse)
                                 }
@@ -114,16 +179,20 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
                         }
 
                         Activity.RESULT_CANCELED -> {
+                            android.util.Log.d("CunningScannerPlugin", "GMS scanner cancelled")
                             // user closed camera
                             pendingResult?.success(emptyList<String>())
                             handled = true
                         }
                     }
+                    shouldClearPendingResult = true
                 } else {
+                    android.util.Log.d("CunningScannerPlugin", "Handling START_DOCUMENT_FB_ACTIVITY (Fallback/HMS)")
                     when (resultCode) {
                         Activity.RESULT_OK -> {
                             // check for errors
                             val error = data?.extras?.getString("error")
+                            android.util.Log.d("CunningScannerPlugin", "Cropper error extra: $error")
                             if (error != null) {
                                 pendingResult?.error("ERROR", "error - $error", null)
                             } else {
@@ -131,15 +200,19 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
                                 val croppedImageResults =
                                     data?.getStringArrayListExtra("croppedImageResults")?.toList()
                                         ?: let {
+                                            android.util.Log.e("CunningScannerPlugin", "No cropped images returned")
                                             pendingResult?.error("ERROR", "No cropped images returned", null)
+                                            pendingResult = null
                                             return@ActivityResultListener true
                                         }
+                                android.util.Log.d("CunningScannerPlugin", "Cropped image results: $croppedImageResults")
 
                                 // return a list of file paths
                                 // removing file uri prefix as Flutter file will have problems with it
                                 val successResponse = croppedImageResults.map {
                                     it.removePrefix("file://")
                                 }.toList()
+                                android.util.Log.d("CunningScannerPlugin", "Success response to Flutter: $successResponse")
                                 if (asPdf) {
                                     try {
                                         val pdfFile = FileUtil().createPdfFile(activity)
@@ -158,15 +231,17 @@ class CunningDocumentScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityA
                         }
 
                         Activity.RESULT_CANCELED -> {
+                            android.util.Log.d("CunningScannerPlugin", "Cropper cancelled")
                             // user closed camera
                             pendingResult?.success(emptyList<String>())
                             handled = true
                         }
                     }
+                    shouldClearPendingResult = true
                 }
 
-                if (handled) {
-                    // Clear the pending result to avoid reuse
+                if (shouldClearPendingResult) {
+                    android.util.Log.d("CunningScannerPlugin", "Clearing pendingResult")
                     pendingResult = null
                 }
                 return@ActivityResultListener handled

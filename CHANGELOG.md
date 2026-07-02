@@ -1,3 +1,14 @@
+## 2.6.0
+### General
+* Introduced `ScannerSource` enum to specify the source of document images: `camera`, `gallery`, or `cameraAndGallery`.
+* Deprecated `isGalleryImportAllowed` in favor of `scannerSource`. If `scannerSource` is provided, it takes precedence and `isGalleryImportAllowed` is ignored.
+
+### Android
+* Added direct gallery selection support. When `ScannerSource.gallery` is chosen, the system launches the device's image picker and routes the selected image directly to the fallback crop editor (`DocumentScannerActivity`) for edge adjustment and perspective correction.
+
+### iOS
+* Integrated direct gallery picker navigation. When `ScannerSource.gallery` is chosen, the plugin opens the native photo library (`PHPickerViewController`) directly, bypassing the alert/choice menu.
+
 ## 2.5.0
 ### Android
 * Added automatic document edge detection for Huawei Mobile Services (HMS) devices using HMS ML Kit Document Skew Correction.

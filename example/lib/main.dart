@@ -21,6 +21,8 @@ class _MyAppState extends State<MyApp> {
   bool _asPdf = false;
   bool _isPdfResult = false;
   bool _isGalleryImportAllowed = false;
+  bool _useScannerSource = true;
+  ScannerSource _scannerSource = ScannerSource.cameraAndGallery;
 
   @override
   void initState() {
@@ -52,15 +54,63 @@ class _MyAppState extends State<MyApp> {
               },
             ),
             SwitchListTile(
-              title: const Text("Allow Gallery Import"),
-              subtitle: const Text("Import documents from photo library"),
-              value: _isGalleryImportAllowed,
+              title: const Text("Use ScannerSource Enum (New API)"),
+              subtitle: const Text("Use new scannerSource configuration"),
+              value: _useScannerSource,
               onChanged: (value) {
                 setState(() {
-                  _isGalleryImportAllowed = value;
+                  _useScannerSource = value;
                 });
               },
             ),
+            if (_useScannerSource)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: DropdownButtonFormField<ScannerSource>(
+                  decoration: const InputDecoration(
+                    labelText: "Scanner Source",
+                    border: OutlineInputBorder(),
+                  ),
+                  initialValue: _scannerSource,
+                  items: ScannerSource.values.map((source) {
+                    String label = "";
+                    switch (source) {
+                      case ScannerSource.camera:
+                        label = "Camera Only";
+                        break;
+                      case ScannerSource.gallery:
+                        label = "Gallery Only";
+                        break;
+                      case ScannerSource.cameraAndGallery:
+                        label = "Camera & Gallery Menu";
+                        break;
+                    }
+                    return DropdownMenuItem<ScannerSource>(
+                      value: source,
+                      child: Text(label),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _scannerSource = value;
+                      });
+                    }
+                  },
+                ),
+              )
+            else
+              SwitchListTile(
+                title: const Text("Allow Gallery Import (Legacy API)"),
+                subtitle: const Text("Import documents from photo library"),
+                value: _isGalleryImportAllowed,
+                onChanged: (value) {
+                  setState(() {
+                    _isGalleryImportAllowed = value;
+                  });
+                },
+              ),
             const SizedBox(height: 10),
             ElevatedButton(
                 onPressed: onPressed, child: const Text("Add Pictures")),
@@ -119,6 +169,8 @@ class _MyAppState extends State<MyApp> {
     List<String> pictures;
     try {
       pictures = await CunningDocumentScanner.getPictures(
+              scannerSource: _useScannerSource ? _scannerSource : null,
+              // ignore: deprecated_member_use
               isGalleryImportAllowed: _isGalleryImportAllowed,
               asPdf: _asPdf,
               iosScannerOptions: IosScannerOptions(
@@ -132,7 +184,7 @@ class _MyAppState extends State<MyApp> {
         _isPdfResult = _asPdf;
       });
     } catch (exception) {
-      // Handle exception here
+      debugPrint("Scanner error: $exception");
     }
   }
 }
