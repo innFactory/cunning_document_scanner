@@ -93,13 +93,17 @@ You can also scan directly to a single PDF document. If `asPdf` is set to `true`
    // pdfPath will be something like: ['/path/to/document.pdf']
 ```
 
-### Gallery Import (Cross-Platform)
+### Scanner Source (Cross-Platform)
 
-Allow the user to import images from their photo library/gallery on both Android and iOS:
+Configure where images are acquired from using the `scannerSource` parameter:
+
+* **Camera only (Default)**: Opens the camera directly.
+* **Gallery only**: Opens the system photo gallery directly.
+* **Camera and Gallery**: Opens a selection menu (iOS) or shows a gallery shortcut (Android) letting the user choose.
 
 ```dart
    final imagesPath = await CunningDocumentScanner.getPictures(
-      isGalleryImportAllowed: true, // Show selection sheet/picker to import from photo library
+      scannerSource: ScannerSource.cameraAndGallery,
    );
 ```
 
